@@ -165,7 +165,7 @@ int AvlTree_Insert(AvlTreePtr tree,char *data)
 
 int AvlTree_NumWords(AvlTreePtr tree)
 {
-	return tree->count;
+	return tree == NULL ? 0 : tree->count;
 }
 
 int Search(TreeNodePtr node,char *wanted)
@@ -185,7 +185,7 @@ int Search(TreeNodePtr node,char *wanted)
 
 int AvlTree_Search(AvlTreePtr tree,char *wanted)
 {
-	return Search(tree->root,wanted);
+	return tree == NULL ? 0 : Search(tree->root,wanted);
 }
 
 int patterncnt(TreeNodePtr node,char *pattern)
@@ -212,24 +212,72 @@ int patterncnt(TreeNodePtr node,char *pattern)
 	return cnt;
 }
 
+int patternExists(TreeNodePtr node,char *pattern)
+{
+	int i = 0,match = 1;
+	if(node != NULL)
+	{
+		while(pattern[i] != '\0' && match)
+		{
+			if(pattern[i] != '*')
+			{
+				if(pattern[i] != node->data[i])
+					match = 0;
+				else
+					i++;
+			}
+			else
+				i++;
+		}
+		if(match)
+			return 1;
+		else if(patternExists(node->left,pattern))
+			return 1;
+		else if(patternExists(node->right,pattern))
+			return 1;
+		else
+			return 0;
+	}
+	else
+		return 0;
+}
+
 int AvlTree_NumWordsWithPattern(AvlTreePtr tree,char *pattern)
 {
-	return patterncnt(tree->root,pattern);
+	return tree == NULL ? 0 : patterncnt(tree->root,pattern);
+}
+
+int AvlTree_PatternExists(AvlTreePtr tree,char *pattern)
+{
+	return tree == NULL ? 0 : patternExists(tree->root,pattern);
 }
 
 int AvlTree_NewSession(AvlTreePtr tree)
 {
+	int i = 0;
 	if(tree == NULL)//Not yet initialized
 		return -1;
-	tree->sessions++;
-	tree->session = (TreeNodePtr*)realloc(tree->session,tree->sessions * sizeof(TreeNodePtr));
+	//Look if there is an available session to give.Otherwise allocate a new one
+	for(i = 0;i < tree->sessions;i++)
+		if(tree->session[i] == NULL)
+			return i;
+	if(tree->sessions == 0)//First time
+	{
+		tree->session = (TreeNodePtr*)calloc(1,sizeof(TreeNodePtr));
+		tree->sessions++;
+	}
+	else
+	{
+		tree->sessions++;
+		tree->session = (TreeNodePtr*)realloc(tree->session,tree->sessions * sizeof(TreeNodePtr));
+	}
 	tree->session[tree->sessions - 1] = NULL;
 	return tree->sessions - 1;
 }
 
 char *AvlTree_NextWordOfSession(AvlTreePtr tree,int sid)
 {
-	char *prword;
+	char *prword = NULL;
 	if(tree == NULL)//Not yet initialized
 		return NULL;
 	if(tree->session[sid] == NULL)//First time
@@ -257,21 +305,6 @@ char *AvlTree_NextWordOfSession(AvlTreePtr tree,int sid)
 	return tree->session[sid] == NULL ? NULL : tree->session[sid]->data;
 }
 
-int AvlTree_DestroyLastSession(AvlTreePtr tree)
-{
-	if(tree == NULL || tree->sessions == 0)//Error
-		return 0;
-	tree->sessions--;
-	if(tree->sessions == 0)
-	{
-		free(tree->session);
-		tree->session = NULL;
-	}
-	else
-		tree->session = (TreeNodePtr*)realloc(tree->session,tree->sessions);
-	return 1;
-}
-
 void Destroy(TreeNodePtr node)
 {
 	if(node != NULL)
@@ -288,6 +321,7 @@ int AvlTree_Destroy(AvlTreePtr *tree)
 	if(*tree == NULL) //Not initialized
 		return 0;
 	Destroy((*tree)->root);
+	free((*tree)->session);
 	free(*tree);
 	*tree = NULL;
 	return 1;

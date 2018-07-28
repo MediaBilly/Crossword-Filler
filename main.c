@@ -8,11 +8,16 @@ int main(int argc, char const *argv[])
 	if(!Board_Initialize(&board,argv[1],argv[2]))
 		return 0;
 
-	Board_Print(board);
-
-	if(Board_Destroy(&board))
-		printf("Board destroyed successfully.\n");
+	if(Board_Solve(board))
+	{
+		printf("Puzzle Solved!\n");
+		Board_Print(board);
+	}
 	else
+		printf("No solution.\n");
+
+
+	if(!Board_Destroy(&board))
 		printf("Board not yet initialized.\n");
 	
 	return 0;

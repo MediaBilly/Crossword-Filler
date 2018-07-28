@@ -1,10 +1,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include "Board.h"
 #include "AVL_Tree.h"
 
 #define MAX_LEN 30
+
+typedef struct MoveList *MoveListPtr;
+
+typedef struct Move
+{
+	int hor;
+	int row;
+	int col;
+	int ecol;
+	int length;
+	int *cp;
+} Move;
+
+struct MoveList
+{
+	Move moveData;
+	MoveListPtr next;
+};
 
 typedef struct WordTree
 {
@@ -16,8 +35,55 @@ struct Board
 {
 	char **table;
 	WordTree wordTree[MAX_LEN];
+	MoveListPtr movesList;
 	int dim;
 };
+
+int MoveList_AddMove(MoveListPtr *list,Move moveData)
+{
+	MoveListPtr tmp;
+	if(*list == NULL)//First time
+	{
+		if((*list = (MoveListPtr)malloc(sizeof(struct MoveList))) == NULL)
+			return 0;
+		(*list)->moveData = moveData;
+		(*list)->next = NULL;
+	}
+	else
+	{
+		tmp = *list;
+		if((*list = (MoveListPtr)malloc(sizeof(struct MoveList))) == NULL)
+			return 0;
+		(*list)->moveData = moveData;
+		(*list)->next = tmp;
+	}
+	return 1;
+}
+
+int MoveList_RemoveLastMove(MoveListPtr *list)
+{
+	MoveListPtr toDel;
+	if(*list == NULL)
+		return 0;
+	toDel = *list;
+	*list = (*list)->next;
+	if(toDel->moveData.cp != NULL)
+		free(toDel->moveData.cp);
+	free(toDel);
+	return 1;
+}
+
+void MoveList_Destroy(MoveListPtr *list)
+{
+	MoveListPtr toDel;
+	while(*list != NULL)
+	{
+		toDel = *list;
+		*list = (*list)->next;
+		free(toDel->moveData.cp);
+		free(toDel);
+	}
+}
 
 int Board_Initialize(Boardptr *board,const char* boardFile,const char* dictFile)
 {
@@ -31,6 +97,7 @@ int Board_Initialize(Boardptr *board,const char* boardFile,const char* dictFile)
 		return 0;
 	}
 	//Read Board file and initialize board struct
+	(*board)->movesList = NULL;
 	for(i = 0;i < MAX_LEN;i++)
 	{
 		(*board)->wordTree[i].tree = NULL;
@@ -93,13 +160,6 @@ int Board_Initialize(Boardptr *board,const char* boardFile,const char* dictFile)
     		}
     	}
     }
-
-    /*printf("Available Lengths:");
-    for(i = 0;i < MAX_LEN;i++)
-    	if((*board)->wordTree[i].enabled)
-    		printf("%d ",i + 1);
-    printf("\n");*/
-
     //Read Words
     if((file = fopen(dictFile,"r")) == NULL)
 	{
@@ -141,17 +201,253 @@ int Board_Initialize(Boardptr *board,const char* boardFile,const char* dictFile)
 		}
 	}
 	fclose(file);
-
-	/*printf("%d\n",AvlTree_NumWordsWithPattern((*board)->wordTree[4].tree,"te**s"));
-	int s = AvlTree_NewSession((*board)->wordTree[2].tree);
-	char *w;
-	if(s != -1)
-	{
-		while((w = AvlTree_NextWordOfSession((*board)->wordTree[2].tree,s)) != NULL)
-			printf("%s\n",w);
-		AvlTree_DestroyLastSession((*board)->wordTree[2].tree);
-	}*/
 	return 1;
+}
+
+Move getNextMove(Boardptr board)
+{
+	int i,j,min,minlength,len = 0,found = 0,p,num,gaps;
+	Move move,prmove;
+	char buf[MAX_LEN + 1];
+	MoveListPtr movesList = board->movesList;
+	move.hor = movesList == NULL ? 1 : !movesList->moveData.hor;
+	if(movesList == NULL)
+	{
+		//Find the wordlist with the least amount of words
+		min = INT_MAX;
+		for(i = 1;i < MAX_LEN;i++)
+			if(board->wordTree[i].enabled && board->wordTree[i].tree != NULL && AvlTree_NumWords(board->wordTree[i].tree) < min)
+			{
+				min = AvlTree_NumWords(board->wordTree[i].tree);
+				minlength = i + 1;
+			}
+
+		move.length = minlength;
+		for(i = 1;i < board->dim + 2 && !found;i++)
+		{
+			p = 1;
+			for(j = 1;j < board->dim + 2 && !found;j++)
+			{
+				if(board->table[move.hor ? i : j][move.hor ? j : i] != '#')
+					len++;
+				else
+				{
+					if(len == minlength)
+					{
+						found = 1;
+						move.row = i;
+						move.col = p;
+						move.ecol = j - 1;
+					}
+					p = j + 1;
+					len = 0;
+				}
+			}
+		}
+		//If not horizontal try vertical
+		if(!found)
+		{
+			move.hor = 0;
+			for(i = 1;i < board->dim + 2 && !found;i++)
+			{
+				p = 1;
+				for(j = 1;j < board->dim + 2 && !found;j++)
+				{
+					if(board->table[move.hor ? i : j][move.hor ? j : i] != '#')
+						len++;
+					else
+					{
+						if(len == minlength)
+						{
+							found = 1;
+							move.row = i;
+							move.col = p;
+							move.ecol = j - 1;
+						}
+						p = j + 1;
+						len = 0;
+					}
+				}
+			}
+		}
+	}
+	else
+	{
+		while(movesList != NULL && !found)
+		{
+			prmove = movesList->moveData;
+			min = INT_MAX;
+			for(j = prmove.col;j <= prmove.ecol;j++)
+			{
+				i = prmove.row;
+				gaps = 0;
+				while(board->table[prmove.hor ? i : j][prmove.hor ? j : i] != '#')
+					i--;
+				p = ++i;
+				while(board->table[prmove.hor ? p : j][prmove.hor ? j : p] != '#')
+				{
+					if(board->table[prmove.hor ? p : j][prmove.hor ? j : p] == ' ')
+					{
+						gaps++;
+						buf[p - i] = '*';
+					}
+					else
+						buf[p - i] = board->table[prmove.hor ? p : j][prmove.hor ? j : p];
+					p++;
+				}
+				buf[p - i] = '\0';
+				len = strlen(buf);
+				if(gaps != 0)
+				{
+					num = AvlTree_NumWordsWithPattern(board->wordTree[len - 1].tree,buf);
+					if(num == 0)
+					{
+						movesList = movesList->next->next;
+						break;
+					}
+					else
+					{
+						found = 1;
+						if(num < min)
+						{
+							min = num;
+							move.row = j;
+							move.col = i;
+							move.ecol = p - 1;
+							move.length = len;
+						}
+					}
+				}
+			}
+			if(!found)
+			{
+				if(movesList->next != NULL)
+					movesList = movesList->next->next;
+				else
+					break;
+			}
+		}
+	}
+	if(found)
+		move.cp = (int*)calloc(move.length,sizeof(int));
+	else
+		move = (Move){ -1, -1 , -1 , -1 , -1 , NULL };
+	return move;
+}
+
+int placeWord(Boardptr board,char *word,Move move)
+{
+	int i,j;
+	for(i = move.col;i <= move.ecol;i++)
+	{
+		if(board->table[move.hor ? move.row : i][move.hor ? i : move.row] != ' ')
+		{
+			if(board->table[move.hor ? move.row : i][move.hor ? i : move.row] != word[i - move.col])
+			{
+				for(j = move.col;j < i;j++)
+					if(!move.cp[j - move.col])
+						board->table[move.hor ? move.row : j][move.hor ? j : move.row] = ' ';
+				return 0;
+			}
+			else
+				move.cp[i - move.col] = 1;
+		}
+		else
+			board->table[move.hor ? move.row : i][move.hor ? i : move.row] = word[i - move.col];
+	}
+	return 1;
+}
+
+void removeLastWord(Boardptr board)
+{
+	Move move = board->movesList->moveData;
+	int i;
+	for(i = move.col;i <= move.ecol;i++)
+		if(!move.cp[i - move.col])
+			board->table[move.hor ? move.row : i][move.hor ? i : move.row] = ' ';
+}
+
+int checkMove(Boardptr board,Move move)
+{
+	int i,j,p,gaps;
+	char buf[MAX_LEN + 1];
+	for(j = move.col;j <= move.ecol;j++)
+	{
+		i = move.row;
+		gaps = 0;
+		while(board->table[move.hor ? i : j][move.hor ? j : i] != '#')
+			i--;
+		p = ++i;
+		while(board->table[move.hor ? p : j][move.hor ? j : p] != '#')
+		{
+			if(board->table[move.hor ? p : j][move.hor ? j : p] == ' ')
+			{
+				buf[p - i] = '*';
+				gaps++;
+			}
+			else
+				buf[p - i] = board->table[move.hor ? p : j][move.hor ? j : p];
+			p++;
+		}
+		buf[p - i] = '\0';
+		if(strlen(buf) > 1)
+		{
+			if(gaps != 0)
+			{
+				if(!AvlTree_PatternExists(board->wordTree[strlen(buf) - 1].tree,buf))
+					return 0;
+			}
+			else
+			{
+				if(!AvlTree_Search(board->wordTree[strlen(buf) - 1].tree,buf))
+					return 0;
+			}
+		}
+	}
+	return 1;
+}
+
+int filled(Boardptr board)
+{
+	int i,j;
+	for(i = 1;i < board->dim + 1;i++)
+		for(j = 1;j < board->dim + 1;j++)
+			if(board->table[i][j] == ' ')
+				return 0;
+	return 1;
+}
+
+int Board_Solve(Boardptr board)
+{
+	if(filled(board))
+		return 1;
+	Move move = getNextMove(board);
+	if(move.row == -1)
+		return 0;
+	if(!(MoveList_AddMove(&(board->movesList),move)))
+		return 0;
+	int session;
+	char *w;
+	if((session = AvlTree_NewSession(board->wordTree[move.length - 1].tree)) == -1)
+		return 0;
+	while((w = AvlTree_NextWordOfSession(board->wordTree[move.length - 1].tree,session)) != NULL)
+	{
+		if(placeWord(board,w,move))
+		{
+			//Board_Print(board);
+			if(checkMove(board,move))
+			{
+				if(Board_Solve(board))
+					return 1;
+				else
+					removeLastWord(board);
+			}
+			else
+				removeLastWord(board);
+		}
+	}
+	MoveList_RemoveLastMove(&(board->movesList));
+	return 0;
 }
 
 void Board_Print(Boardptr board)
@@ -176,6 +472,7 @@ int Board_Destroy(Boardptr *board)
 	for(i = 0;i < MAX_LEN;i++)
 		if((*board)->wordTree[i].tree != NULL)
 			AvlTree_Destroy(&((*board)->wordTree[i].tree));
+	MoveList_Destroy(&((*board)->movesList));
 	free(*board);
 	return 1;
 }
