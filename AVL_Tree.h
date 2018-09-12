@@ -11,6 +11,7 @@ int AvlTree_NumWordsWithPattern(AvlTreePtr tree,char *pattern);
 int AvlTree_PatternExists(AvlTreePtr tree,char *pattern);
 int AvlTree_NewSession(AvlTreePtr tree);
 char *AvlTree_NextWordOfSession(AvlTreePtr tree,int sid);
+void AvlTree_EndSession(AvlTreePtr tree,int sid);
 int AvlTree_Destroy(AvlTreePtr *tree);
 
 #endif

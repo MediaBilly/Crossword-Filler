@@ -305,6 +305,11 @@ char *AvlTree_NextWordOfSession(AvlTreePtr tree,int sid)
 	return tree->session[sid] == NULL ? NULL : tree->session[sid]->data;
 }
 
+void AvlTree_EndSession(AvlTreePtr tree,int sid)
+{
+	tree->session[sid] = NULL;
+}
+
 void Destroy(TreeNodePtr node)
 {
 	if(node != NULL)

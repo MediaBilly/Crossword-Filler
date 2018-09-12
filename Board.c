@@ -16,6 +16,11 @@ typedef struct Move
 	int col;
 	int ecol;
 	int length;
+	int cr_hor;
+	int cr_row;
+	int cr_col;
+	int cr_ecol;
+	int firstmove;
 	int *cp;
 } Move;
 
@@ -37,6 +42,7 @@ struct Board
 	WordTree wordTree[MAX_LEN];
 	MoveListPtr movesList;
 	int dim;
+	Move angryMove;
 };
 
 int MoveList_AddMove(MoveListPtr *list,Move moveData)
@@ -206,12 +212,13 @@ int Board_Initialize(Boardptr *board,const char* boardFile,const char* dictFile)
 
 Move getNextMove(Boardptr board)
 {
-	int i,j,min,minlength,len = 0,found = 0,p,num,gaps;
+	int i,j,min,minlength,len = 0,found = 0,p,num,gaps = 0;
 	Move move,prmove;
 	char buf[MAX_LEN + 1];
 	MoveListPtr movesList = board->movesList;
 	move.hor = movesList == NULL ? 1 : !movesList->moveData.hor;
-	if(movesList == NULL)
+	move.firstmove = movesList == NULL ? 1 : 0;
+	if(movesList == NULL)//Firsttime
 	{
 		//Find the wordlist with the least amount of words
 		min = INT_MAX;
@@ -238,6 +245,7 @@ Move getNextMove(Boardptr board)
 						move.row = i;
 						move.col = p;
 						move.ecol = j - 1;
+						move.cr_hor = move.cr_row = move.cr_col = move.cr_ecol = -1;
 					}
 					p = j + 1;
 					len = 0;
@@ -263,6 +271,7 @@ Move getNextMove(Boardptr board)
 							move.row = i;
 							move.col = p;
 							move.ecol = j - 1;
+							move.cr_hor = move.cr_row = move.cr_col = move.cr_ecol = -1;
 						}
 						p = j + 1;
 						len = 0;
@@ -273,10 +282,10 @@ Move getNextMove(Boardptr board)
 	}
 	else
 	{
-		while(movesList != NULL && !found)
+		min = INT_MAX;
+		while(movesList != NULL)
 		{
 			prmove = movesList->moveData;
-			min = INT_MAX;
 			for(j = prmove.col;j <= prmove.ecol;j++)
 			{
 				i = prmove.row;
@@ -297,12 +306,12 @@ Move getNextMove(Boardptr board)
 				}
 				buf[p - i] = '\0';
 				len = strlen(buf);
-				if(gaps != 0)
+				if(gaps != 0 && len > 1)
 				{
 					num = AvlTree_NumWordsWithPattern(board->wordTree[len - 1].tree,buf);
 					if(num == 0)
 					{
-						movesList = movesList->next->next;
+						found = 0;
 						break;
 					}
 					else
@@ -315,23 +324,79 @@ Move getNextMove(Boardptr board)
 							move.col = i;
 							move.ecol = p - 1;
 							move.length = len;
+							move.hor = !prmove.hor;
+							move.cr_hor = prmove.hor;
+							move.cr_row = prmove.row;
+							move.cr_col = prmove.col;
+							move.cr_ecol = prmove.ecol;
+							if(movesList->next != NULL && movesList->next->next == NULL)
+								move.firstmove = 1;
 						}
 					}
 				}
 			}
-			if(!found)
+			movesList = movesList->next;
+			if(movesList != NULL && movesList->moveData.firstmove)
+				break;
+		}
+		if(!found)//If we dont a find a move that crosses a previous one
+		{
+			printf("bl\n");
+			//Find the move with the least options of words
+			min = INT_MAX;
+			do
 			{
-				if(movesList->next != NULL)
-					movesList = movesList->next->next;
-				else
-					break;
+				for(i = 1;i < board->dim + 2;i++)
+				{
+					p = 1;
+					for(j = 1;j < board->dim + 2;j++)
+					{
+						if(board->table[move.hor ? i : j][move.hor ? j : i] != '#')
+						{
+							len++;
+							if(board->table[move.hor ? i : j][move.hor ? j : i] == ' ')
+							{
+								gaps++;
+								buf[j - p] = '*';
+							}
+							else
+								buf[j - p] = board->table[move.hor ? i : j][move.hor ? j : i];
+						}
+						else
+						{
+							buf[j - p] = '\0';
+							if(gaps > 0 && len > 1)
+							{
+								num = AvlTree_NumWordsWithPattern(board->wordTree[len - 1].tree, buf);
+								if(num > 0 && num < min)
+								{
+									min = num;
+									found = 1;
+									move.row = i;
+									move.col = p;
+									move.ecol = j - 1;
+									move.length = len;
+									move.cr_hor = move.cr_row = move.cr_col = move.cr_ecol = -1;
+								}
+							}
+							p = j + 1;
+							len = gaps = 0;
+						}
+					}
+				}
+				if(!found)
+				{
+					printf("blah\n");
+					move.hor = !move.hor;
+				}
 			}
+			while(!found);
 		}
 	}
 	if(found)
 		move.cp = (int*)calloc(move.length,sizeof(int));
 	else
-		move = (Move){ -1, -1 , -1 , -1 , -1 , NULL };
+		move = (Move){ -1 , -1 , -1 , -1 , -1 , -1 , -1 , -1 , -1 , -1 , NULL };
 	return move;
 }
 
@@ -430,29 +495,42 @@ int Board_Solve(Boardptr board)
 	char *w;
 	if((session = AvlTree_NewSession(board->wordTree[move.length - 1].tree)) == -1)
 		return 0;
+	//printf("(%d,%d) -(%d,%d) : %d\n",move.row,move.col,move.row,move.ecol,move.hor);
+	//Board_Print(board);
 	while((w = AvlTree_NextWordOfSession(board->wordTree[move.length - 1].tree,session)) != NULL)
 	{
 		if(placeWord(board,w,move))
 		{
-			//Board_Print(board);
 			if(checkMove(board,move))
 			{
 				if(Board_Solve(board))
 					return 1;
 				else
+				{
 					removeLastWord(board);
+					if(board->angryMove.cr_hor != -1)
+						if(board->angryMove.cr_hor != move.hor || board->angryMove.cr_row != move.row || board->angryMove.cr_col != move.col || board->angryMove.cr_ecol != move.ecol)
+						{
+							//printf("(%d,%d) -(%d,%d) : %d\n",board->angryMove.cr_row,board->angryMove.cr_col,board->angryMove.cr_row,board->angryMove.cr_ecol,board->angryMove.cr_hor);
+							MoveList_RemoveLastMove(&(board->movesList));
+							AvlTree_EndSession(board->wordTree[move.length - 1].tree,session);
+							return 0;
+						}
+				}
 			}
 			else
 				removeLastWord(board);
 		}
 	}
 	MoveList_RemoveLastMove(&(board->movesList));
+	board->angryMove = move;
 	return 0;
 }
 
 void Board_Print(Boardptr board)
 {
 	int i,j;
+	//system("clear");
 	for(i = 0;i < board->dim + 2;i++)
 	{
 		for(j = 0;j < board->dim + 2;j++)
