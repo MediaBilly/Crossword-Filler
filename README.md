@@ -4,8 +4,10 @@ specific folders.
 
 
 --------------------COMPILATION INSTRUCTIONS--------------------
+
 To compile type make.
 To delete all object files and the executable type make clean.
 
 --------------------RUN INSTRUCTION--------------------
+
 To run the program type ./crossword <Board File> <Dictionary File>
