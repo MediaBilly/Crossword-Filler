@@ -42,6 +42,7 @@ struct Board
 	WordTree wordTree[MAX_LEN];
 	MoveListPtr movesList;
 	int dim;
+	int empty;
 	Move angryMove;
 };
 
@@ -132,8 +133,12 @@ int Board_Initialize(Boardptr *board,const char* boardFile,const char* dictFile)
 			(*board)->table[i][j] = ((i == 0 || i == (*board)->dim + 1) ? '#' : ' ');
 	}
 
+	(*board)->empty = 1;
 	while(fscanf(file, " %d %d", &i,&j) != EOF)
+	{
 		(*board)->table[i][j] = '#';
+		(*board)->empty = 0;
+	}
 
     fclose(file);
 
@@ -341,7 +346,6 @@ Move getNextMove(Boardptr board)
 		}
 		if(!found)//If we dont a find a move that crosses a previous one
 		{
-			printf("bl\n");
 			//Find the move with the least options of words
 			min = INT_MAX;
 			do
@@ -385,10 +389,7 @@ Move getNextMove(Boardptr board)
 					}
 				}
 				if(!found)
-				{
-					printf("blah\n");
 					move.hor = !move.hor;
-				}
 			}
 			while(!found);
 		}
@@ -410,15 +411,27 @@ int placeWord(Boardptr board,char *word,Move move)
 			if(board->table[move.hor ? move.row : i][move.hor ? i : move.row] != word[i - move.col])
 			{
 				for(j = move.col;j < i;j++)
+				{
 					if(!move.cp[j - move.col])
-						board->table[move.hor ? move.row : j][move.hor ? j : move.row] = ' ';
+					{
+						if(board->empty)
+							board->table[move.row][j] = board->table[j][move.row] = ' ';
+						else
+							board->table[move.hor ? move.row : j][move.hor ? j : move.row] = ' ';
+					}
+				}
 				return 0;
 			}
 			else
 				move.cp[i - move.col] = 1;
 		}
 		else
-			board->table[move.hor ? move.row : i][move.hor ? i : move.row] = word[i - move.col];
+		{
+			if(board->empty)
+				board->table[move.row][i] = board->table[i][move.row] = word[i - move.col];
+			else
+				board->table[move.hor ? move.row : i][move.hor ? i : move.row] = word[i - move.col];
+		}
 	}
 	return 1;
 }
@@ -428,8 +441,15 @@ void removeLastWord(Boardptr board)
 	Move move = board->movesList->moveData;
 	int i;
 	for(i = move.col;i <= move.ecol;i++)
+	{
 		if(!move.cp[i - move.col])
-			board->table[move.hor ? move.row : i][move.hor ? i : move.row] = ' ';
+		{
+			if(board->empty)
+				board->table[move.row][i] = board->table[i][move.row] = ' ';
+			else
+				board->table[move.hor ? move.row : i][move.hor ? i : move.row] = ' ';
+		}
+	}
 }
 
 int checkMove(Boardptr board,Move move)
@@ -495,7 +515,6 @@ int Board_Solve(Boardptr board)
 	char *w;
 	if((session = AvlTree_NewSession(board->wordTree[move.length - 1].tree)) == -1)
 		return 0;
-	//printf("(%d,%d) -(%d,%d) : %d\n",move.row,move.col,move.row,move.ecol,move.hor);
 	//Board_Print(board);
 	while((w = AvlTree_NextWordOfSession(board->wordTree[move.length - 1].tree,session)) != NULL)
 	{
@@ -511,7 +530,6 @@ int Board_Solve(Boardptr board)
 					if(board->angryMove.cr_hor != -1)
 						if(board->angryMove.cr_hor != move.hor || board->angryMove.cr_row != move.row || board->angryMove.cr_col != move.col || board->angryMove.cr_ecol != move.ecol)
 						{
-							//printf("(%d,%d) -(%d,%d) : %d\n",board->angryMove.cr_row,board->angryMove.cr_col,board->angryMove.cr_row,board->angryMove.cr_ecol,board->angryMove.cr_hor);
 							MoveList_RemoveLastMove(&(board->movesList));
 							AvlTree_EndSession(board->wordTree[move.length - 1].tree,session);
 							return 0;
@@ -530,7 +548,6 @@ int Board_Solve(Boardptr board)
 void Board_Print(Boardptr board)
 {
 	int i,j;
-	//system("clear");
 	for(i = 0;i < board->dim + 2;i++)
 	{
 		for(j = 0;j < board->dim + 2;j++)
