@@ -3,11 +3,11 @@ A program that takes an empty crossword and fills it with words from a dictionar
 specific folders.
 
 
-## COMPILATION INSTRUCTIONS
+## Compilation
 
 To compile type make.
 To delete all object files and the executable type make clean.
 
-## RUN INSTRUCTION 
+## Run 
 
 To run the program type ./crossword <Board File> <Dictionary File>
